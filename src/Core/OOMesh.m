@@ -1604,7 +1604,10 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 			[self calculateVertexTangentsWithFaceRefs:faceRefs];
 			PROFILE(@"finished calculateVertexTangents");
 		}
-		
+
+		[self calculateBoundingVolumes];
+		PROFILE(@"finished calculateBoundingVolumes");
+
 		[self adjustOutlines];
 
 		// save the resulting data for possible reuse
@@ -1615,10 +1618,10 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		{
 			OOLog(@"mesh.error", @"%@ ..... from %@ %@", failString, filename, (using_preloaded)? @"(from preloaded data)" :@"(from file)");
 		}
+	} else {
+		[self calculateBoundingVolumes];
+		PROFILE(@"finished calculateBoundingVolumes");
 	}
-	
-	[self calculateBoundingVolumes];
-	PROFILE(@"finished calculateBoundingVolumes");
 	
 	// set up vertex arrays for drawing
 	if (![self setUpVertexArrays])  return NO;
@@ -1643,17 +1646,14 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 
 - (void) adjustOutlines
 {
-	if (_normals == NULL)
-	{
-		return;
-	}
+	Vector origin = make_vector(
+		(boundingBox.max.x + boundingBox.min.x) / 2,
+		(boundingBox.max.y + boundingBox.min.y) / 2,
+		(boundingBox.max.z + boundingBox.min.z) / 2);
 	OOMeshVertexCount i;
 	for (i = vertexCount/2; i < vertexCount; i++)
 	{
-		if (!vector_equal(_normals[i], kZeroVector))
-		{
-			_vertices[i] = vector_add(_vertices[i], vector_multiply_scalar(vector_normal(_normals[i]), -.02 * magnitude(_vertices[i])));
-		}
+		_vertices[i] = vector_add(vector_multiply_scalar(vector_subtract(_vertices[i], origin), 1.02),origin);
 	}
 }
 
