@@ -139,6 +139,8 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)object
 	   scaleFactor:(float)scale;
 
 - (BOOL) loadData:(NSString *)filename scaleFactor:(float)scale;
+- (void) adjustOutlinesWinding;
+- (void) adjustOutlines;
 - (void) checkNormalsAndAdjustWinding;
 - (void) generateFaceTangents;
 - (void) calculateVertexNormalsAndTangentsWithFaceRefs:(VertexFaceRef *)faceRefs;
@@ -1221,7 +1223,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		{
 			int n_v;
 			if ([scanner scanInt:&n_v])
-				vertexCount = n_v;
+				vertexCount = 2 * n_v;
 			else
 			{
 				failFlag = YES;
@@ -1246,7 +1248,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 			int n_f;
 			if ([scanner scanInt:&n_f])
 			{
-				faceCount = n_f;
+				faceCount = 2 * n_f;
 			}
 			else
 			{
@@ -1283,7 +1285,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		// get vertex data
 		if ([scanner scanString:@"VERTEX" intoString:NULL])
 		{
-			for (j = 0; j < vertexCount; j++)
+			for (j = 0; j < vertexCount/2; j++)
 			{
 				float x, y, z;
 				if (!failFlag)
@@ -1294,6 +1296,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 					if (!failFlag)
 					{
 						_vertices[j] = make_vector(x*scale, y*scale, z*scale);
+						_vertices[vertexCount/2+j] = make_vector(x*scale, y*scale, z*scale);
 					}
 					else
 					{
@@ -1311,7 +1314,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		// get face data
 		if ([scanner scanString:@"FACES" intoString:NULL])
 		{
-			for (j = 0; j < faceCount; j++)
+			for (j = 0; j < faceCount/2; j++)
 			{
 				int r, g, b;
 				float nx, ny, nz;
@@ -1325,6 +1328,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 					if (!failFlag)
 					{
 						_faces[j].smoothGroup = r;
+						_faces[faceCount/2+j].smoothGroup = (r+128)%256; // different smoothGroup
 					}
 					else
 					{
@@ -1338,6 +1342,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 					if (!failFlag)
 					{
 						_faces[j].normal = vector_normal(make_vector(nx, ny, nz));
+						_faces[faceCount/2+j].normal = vector_normal(make_vector(-nx, -ny, -nz));
 					}
 					else
 					{
@@ -1372,7 +1377,11 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 							if ([scanner scanInt:&vi])
 							{
 								_faces[j].vertex[i] = vi;
-								if (faceRefs != NULL)  VFRAddFace(&faceRefs[vi], j);
+								_faces[faceCount/2+j].vertex[i] = vertexCount/2+vi;
+								if (faceRefs != NULL) {
+								   VFRAddFace(&faceRefs[vi], j);
+								   VFRAddFace(&faceRefs[vertexCount/2+vi], faceCount/2+j); // no need to reverse the winding here too
+								}
 							}
 							else
 							{
@@ -1393,7 +1402,10 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		// Get textures data.
 		if ([scanner scanString:@"TEXTURES" intoString:NULL])
 		{
-			for (j = 0; j < faceCount; j++)
+			materialKeys[0] = @"_oo_placeholder_material";// for outline, I should another black texture
+			materialCount = 1;
+
+			for (j = 0; j < faceCount/2; j++)
 			{
 				NSString	*materialKey;
 				float	max_x, max_y;
@@ -1414,6 +1426,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 						if (index != nil)
 						{
 							_faces[j].materialIndex = [index unsignedIntValue];
+							_faces[faceCount/2+j].materialIndex = 0;//[[OOMesh placeholderMaterial] retain]
 						}
 						else
 						{
@@ -1423,6 +1436,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 								return NO;
 							}
 							_faces[j].materialIndex = materialCount;
+							_faces[faceCount/2+j].materialIndex = 0;
 							materialKeys[materialCount] = [materialKey retain];
 							index = [NSNumber numberWithUnsignedInt:materialCount];
 							[texFileName2Idx setObject:index forKey:materialKey];
@@ -1467,9 +1481,10 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 			materialKeys[0] = @"_oo_placeholder_material";
 			materialCount = 1;
 			
-			for (j = 0; j < faceCount; j++)
+			for (j = 0; j < faceCount/2; j++)
 			{
 				_faces[j].materialIndex = 0;
+				_faces[faceCount/2+j].materialIndex = 0;
 			}
 		}
 		
@@ -1512,7 +1527,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 				return NO;
 			}
 			
-			for (j = 0; j < vertexCount; j++)
+			for (j = 0; j < vertexCount/2; j++)
 			{
 				float x, y, z;
 				if (!failFlag)
@@ -1523,6 +1538,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 					if (!failFlag)
 					{
 						_normals[j] = vector_normal(make_vector(x, y, z));
+						_normals[vertexCount/2+j] = vector_normal(make_vector(-x, -y, -z));
 					}
 					else
 					{
@@ -1534,7 +1550,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 			// Get explicit tangents (only together with vertices).
 			if ([scanner scanString:@"TANGENTS" intoString:NULL])
 			{
-				for (j = 0; j < vertexCount; j++)
+				for (j = 0; j < vertexCount/2; j++)
 				{
 					float x, y, z;
 					if (!failFlag)
@@ -1545,6 +1561,7 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 						if (!failFlag)
 						{
 							_tangents[j] = vector_normal(make_vector(x, y, z));
+							_tangents[vertexCount/2+j] = vector_normal(make_vector(x, y, z));
 						}
 						else
 						{
@@ -1557,6 +1574,8 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 		
 		PROFILE(@"finished parsing");
 		
+		[self adjustOutlinesWinding];
+
 		if (IsLegacyNormalMode(_normalMode))
 		{
 			[self checkNormalsAndAdjustWinding];
@@ -1586,6 +1605,8 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 			PROFILE(@"finished calculateVertexTangents");
 		}
 		
+		[self adjustOutlines];
+
 		// save the resulting data for possible reuse
 		[OOCacheManager setMeshData:[self modelData] forName:cacheKey];
 		PROFILE(@"saved to cache");
@@ -1604,8 +1625,36 @@ shaderBindingTarget:(id<OOWeakReferenceSupport>)target
 	PROFILE(@"finished setUpVertexArrays");
 	
 	return YES;
-	
 	OOJS_PROFILE_EXIT
+}
+
+
+- (void) adjustOutlinesWinding
+{
+	OOMeshFaceCount i;
+	for (i = faceCount/2; i < faceCount; i++)
+	{
+		int v0 = _faces[i].vertex[0];
+		_faces[i].vertex[0] = _faces[i].vertex[2];
+		_faces[i].vertex[2] = v0;
+	}
+}
+
+
+- (void) adjustOutlines
+{
+	if (_normals == NULL)
+	{
+		return;
+	}
+	OOMeshVertexCount i;
+	for (i = vertexCount/2; i < vertexCount; i++)
+	{
+		if (!vector_equal(_normals[i], kZeroVector))
+		{
+			_vertices[i] = vector_add(_vertices[i], vector_multiply_scalar(vector_normal(_normals[i]), -.02 * magnitude(_vertices[i])));
+		}
+	}
 }
 
 

@@ -18,11 +18,11 @@
 	"no-textures-material" =
 	{
 		diffuse_map = "";
-		diffuse_color = (0, 0, 0.4);
-		ambient_color = (0, 0, 0.4);
-		emission_color = (0.4, 0.1, 0.1);
-		specular_color = (0.1, 1.0, 0.1);
-		shininess = 4;
+		diffuse_color = (0, 0, 0);
+		ambient_color = (0, 0, 0);
+		emission_color = (0, 0, 0);
+		specular_color = (0, 0, 0);
+		shininess = 0;
 	};
 	// NEW_PLANETS definitions	
 	"planet-material" =
